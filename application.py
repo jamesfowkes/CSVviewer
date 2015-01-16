@@ -166,14 +166,15 @@ class Application:
             try:
                 field_name = self.data_manager.get_field_name_from_display_name(display_name)
                 styles = configmanager.get_dataset_config('FORMATTING', field_name)
+                print("Styles 1: " + str(styles))
                 styles = [style.strip() for style in styles.split(",")]
-                
-                if len(styles) == 0:
-                    styles.append('line') #Add the default plot style
+                print("Styles 2: " + str(styles))
+                if styles[0] == '':
+                    styles[0] = 'line' #Add the default plot style
     
                 if len(styles) == 1:
                     styles.append('b') #Add the default colour (blue)
-    
+                print("Styles 3: " + str(styles))
             except KeyError:
                 pass # This field name not in the config file
         
@@ -290,7 +291,7 @@ class Application:
         self.plotter.clear_data()
 
         # Get the default fields from config
-        default_fields = self.global_config['DEFAULT']['DefaultFields']
+        default_fields = configmanager.get_global_config('DEFAULT', 'DefaultFields')
         default_fields = [field.strip() for field in default_fields.split(",")]
 
         # Drawing mutiple plots, so turn off drawing until all three are processed
