@@ -1,5 +1,5 @@
 """
-csv_datamanager.py
+datamanager.py
 
 @author: James Fowkes
 
@@ -14,7 +14,13 @@ import threading
 
 from datetime import timedelta
 
-from special_fields import Windspeed, Humidity, WindDirection
+import configmanager
+
+from special_fields import get_special_field
+
+# Data loading events
+EVT_DATA_LOAD_COMPLETE = -1
+EVT_DATA_PROCESSING_COMPLETE = -2
 
 def valid_filename(filename):
     """ Returns true if the filename ends with .csv.
@@ -63,12 +69,32 @@ class DataManager(threading.Thread):
         self.dataframes = None
 
         # These fields have special processing applied before they are displayed
-        self.special_fields = {
-            "Humidity" : Humidity("Humidity"),
-            "Wind Pulses" : Windspeed("Wind Pulses", 0.7),
-            "Direction" : WindDirection("Direction"),
-        }
-
+        self.special_fields = {}
+        try:
+            for field_name, field_options in configmanager.get_dataset_config('SPECIAL FIELDS').items():
+                # Each field_options is a comma-separated list of options
+                field_options = [option.strip() for option in field_options.split(",")]
+                field_type = field_options[0] # The first option is the type of field
+                display_name = field_options[1] # The first option is the name to use for display
+                other_args = field_options[2:] #Any additional arguments for this field
+                self.special_fields[field_name] = get_special_field(field_type, field_name, display_name, other_args)
+        except KeyError:
+            pass # No special fields named in config file
+        
+        # Some fields might want to be limited by the user
+        self.limits = {}
+        try:
+            for display_name, limits in configmanager.get_dataset_config('LIMITS').items():
+                #limits should be two numbers separated by a comma
+                try:
+                    limits = limits.split(",")
+                    if len(limits) == 2:
+                        self.limits[display_name] = [float(limits[0]), float(limits[1])]
+                except ValueError:
+                    pass # Could not convert limits: just leave as no limits
+        except KeyError:
+            pass # No limits specified in config file
+        
     def run(self):
         """
         Parse the file with pandas
@@ -90,19 +116,21 @@ class DataManager(threading.Thread):
             dataframe = pd.read_csv(full_path, parse_dates=[[1, 2]], dayfirst=True, index_col=0)
             frames.append(dataframe)
 
-            percent_complete = (fcount * 95) / total_file_count
+            percent_complete = (fcount * 100) / total_file_count
             self.queue.put(percent_complete)
 
+        self.queue.put(EVT_DATA_LOAD_COMPLETE)
+        
         # All dataframes created, now merge them and sort by time
         data = pd.concat(frames)
         data.sort_index(inplace=True)
 
-        self.queue.put(96)
+        self.queue.put(20)
 
         # Strip any whitespace from the column names
         data.rename(columns=lambda x: x.strip(), inplace=True)
 
-        self.queue.put(97)
+        self.queue.put(40)
 
         # Split data into seperate dataframes (ignoring reference field)
         column_names = list(data.columns.values)[1:]
@@ -110,19 +138,20 @@ class DataManager(threading.Thread):
         for col in column_names:
             self.dataframes[col] = pd.DataFrame(data[col], index=data.index)
 
-        self.queue.put(98)
+        self.queue.put(60)
 
         # Apply any special data conversions
         for key, dataframe in self.dataframes.items():
             try:
-                self.dataframes[key] = self.special_fields[key].convert(dataframe)
+                self.dataframes[key] = self.special_fields[key].convert(dataframe, limits)
                 get_module_logger().info("Applied special conversion to field '%s'", key)
             except KeyError:
+                get_module_logger().info("No special conversion exists for field '%s'", key)
                 pass # No special field exists for this data
             except:
                 raise
-
-        self.queue.put(99)
+                
+        self.queue.put(80)
 
         # The fields are fixed, so save them to a member now rather than compute each time
         self._set_fieldnames(column_names)
@@ -130,8 +159,24 @@ class DataManager(threading.Thread):
         # Can also get numeric fieldnames now
         self._set_numeric_fields()
 
+        # Apply any user-specified limits
+        for key, limit in self.limits.items():
+            get_module_logger().info("Applying limits (%d, %d) to field %s",
+                limit[0], limit[1], key)
+                
+            field_name = self._display_to_field_dict[key]
+            
+            df = self.dataframes[key]
+            
+            max_limit = limit[1]
+            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] <= max_limit]
+            
+            min_limit = limit[0]
+            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] >= min_limit]
+                        
         # Signal to main thread that data load and conversion is complete
         self.queue.put(100)
+        self.queue.put(EVT_DATA_PROCESSING_COMPLETE)
 
     def _set_fieldnames(self, names):
         """

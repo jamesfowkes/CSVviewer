@@ -10,6 +10,17 @@ import pandas as pd
 import numpy as np
 import abc
 
+def get_special_field(type, field_name, display_name, args=None):
+    if type == "WS":
+        #args[0] should be the calibration factor for the windspeed
+        return Windspeed(field_name, display_name, args[0] if args else None)
+    elif type == "HUM":
+        return Humidity(field_name, display_name)
+    elif type == "WD":
+        return WindDirection(field_name, display_name)
+    elif type == "Flush Seconds":
+        return FlushSeconds(field_name, display_name)
+        
 class SpecialField(object):
 
     """
@@ -35,7 +46,7 @@ class SpecialField(object):
         To be overridden by subclasses
         """
         return
-
+    
     @abc.abstractmethod
     def capabilities(self, manager):
         """
@@ -53,12 +64,13 @@ class Humidity(SpecialField):
     """ Humidity data is stored as decimal between 0.0 and 1.0.
     It should be displayed as 0% to 100% """
 
-    def __init__(self, field_name):
+    def __init__(self, field_name, display_name):
         """
         Args:
         field_name : The fieldname of the humidity field
+        display_name : The name the field should have in plots/GUIs
         """
-        SpecialField.__init__(self, field_name, "Humidity")
+        SpecialField.__init__(self, field_name, display_name)
 
     def convert(self, dataframe):
 
@@ -87,14 +99,15 @@ class Windspeed(SpecialField):
     2. Convert pulses-per-second into meters per second by applying a fixed calibration factor
     """
 
-    def __init__(self, field_name, calibration_factor):
+    def __init__(self, field_name, display_name, calibration_factor):
         """
         Args:
         field_name: The fieldname of the humidity field
+        display_name : The name the field should have in plots/GUIs
         calibration_factor : The number to multiply each data point by to get m/s
         """
-        self.factor = calibration_factor
-        SpecialField.__init__(self, field_name, "Wind Speed")
+        self.factor = float(calibration_factor) if calibration_factor is not None else 200 #Default calibration factor
+        SpecialField.__init__(self, field_name, display_name)
 
     def convert(self, dataframe):
 
@@ -153,12 +166,13 @@ class WindDirection(SpecialField):
     Wind direction data is assumed to come as cardinal points (N, E, S, W etc).
     Conversion is performed to degrees (0 to 359)
     """
-    def __init__(self, field_name):
+    def __init__(self,  field_name, display_name):
         """
         Args:
         field_name: The fieldname of the direction field
+        display_name : The name the field should have in plots/GUIs
         """
-        SpecialField.__init__(self, field_name, "Direction")
+        SpecialField.__init__(self, field_name, display_name)
 
     def convert(self, dataframe):
         """
@@ -192,3 +206,31 @@ class WindDirection(SpecialField):
         _:Placeholder for data manager (not used)
         """
         return None
+        
+class FlushSeconds(SpecialField):
+
+    """
+    Flush duration data is only special because it can be histogram'd
+    """
+
+    def __init__(self,  field_name, display_name):
+        """
+        Args:
+        field_name: The fieldname of the flush seconds field
+        """
+        SpecialField.__init__(self,  field_name, display_name)
+        
+    def convert(self, dataframe):
+
+        """
+        No conversion is required for this dataset
+        Args:
+        dataframe : The dataframe to convert
+        """
+
+        return dataframe
+        
+    def capabilities(self, manager):
+        
+        """ Returns a list of the special functions that can be performed with this dataset """
+        return ["Histogram"]

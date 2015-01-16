@@ -8,10 +8,12 @@ Entry file for the CSV viewer application
 
 import argparse
 import logging
-import configparser
 import codecs
+import os
 
-from datamanager import DataManager
+import configmanager
+
+from datamanager import DataManager, EVT_DATA_LOAD_COMPLETE, EVT_DATA_PROCESSING_COMPLETE
 from gui import GUI, ask_directory, run_gui, show_info_dialog
 from plotter import Plotter, WindPlotter, Histogram
 
@@ -48,19 +50,16 @@ class Application:
     Handles interaction between GUI events, GUI drawing, plotting, file reading etc.
     """
 
-    def __init__(self, _, config):
+    def __init__(self, _):
 
         """
         Args:
         _ : Command line arguments (not currently used)
-        config : configparser object containing configuration information
         """
 
-        self.config = config
-
-        self.plotter = Plotter(config)
-        self.windplotter = WindPlotter(config)
-        self.histogram = Histogram(config)
+        self.plotter = Plotter()
+        self.windplotter = WindPlotter()
+        self.histogram = Histogram()
 
         self.msg_queue = None
         self.loading_timer = None
@@ -160,6 +159,26 @@ class Application:
 
         self.gui.draw(self.plotter)
 
+    def get_plotting_style_for_field(self, display_name):
+        
+        styles = None
+        if configmanager.has_dataset_config() and display_name is not None:
+            try:
+                field_name = self.data_manager.get_field_name_from_display_name(display_name)
+                styles = configmanager.get_dataset_config('FORMATTING', field_name)
+                styles = [style.strip() for style in styles.split(",")]
+                
+                if len(styles) == 0:
+                    styles.append('line') #Add the default plot style
+    
+                if len(styles) == 1:
+                    styles.append('b') #Add the default colour (blue)
+    
+            except KeyError:
+                pass # This field name not in the config file
+        
+        return ["line","b"] if styles is None else styles
+        
     def reset_average_data(self):
 
         """ Get the dataset of interest and reset the original data """
@@ -174,7 +193,7 @@ class Application:
             display_name, subplot_index)
 
         self.gui.draw(self.plotter)
-
+        
     def action_new_data(self):
 
         """ Handles request to show open a new set of CSV files """
@@ -183,7 +202,10 @@ class Application:
 
         if new_directory != '' and DataManager.directory_has_data_files(new_directory):
             get_module_logger().info("Parsing directory %s", new_directory)
-            self.gui.reset_and_show_progress_bar(new_directory)
+            
+            configmanager.load_dataset_config(new_directory)
+
+            self.gui.reset_and_show_progress_bar("Loading from folder '%s'" % new_directory)
 
             self.msg_queue = queue.Queue()
             self.data_manager = DataManager(self.msg_queue, new_directory)
@@ -199,10 +221,14 @@ class Application:
         dataloader_finished = False
         try:
             msg = self.msg_queue.get(0)
-            if msg == 100:
+            if msg == EVT_DATA_LOAD_COMPLETE:
+                self.gui.set_progress_text("Processing data...")
+                self.gui.set_progress_percent(0)
+            elif msg == EVT_DATA_PROCESSING_COMPLETE:
+                # Data has finished loading.
                 dataloader_finished = True
                 self.gui.hide_progress_bar()
-                self.plot_default_datasets()
+                self.plot_datasets()
             else:
                 self.gui.set_progress_percent(msg)
         except queue.Empty:
@@ -244,10 +270,11 @@ class Application:
             get_module_logger().info("Plotting histogram")
             self.gui.add_new_window('Histogram', (7, 6))
 
-            # Get the windspeed data
-            speed = self.data_manager.get_dataset('Wind Speed')
+            # Get the data for the histogram
+            dataset_name = self.gui.get_selected_dataset_name()
+            speed = self.data_manager.get_dataset(dataset_name)
 
-            self.histogram.set_data(speed)
+            self.histogram.set_data(speed, dataset_name)
 
             # Add window and axes to the GUI
             self.gui.draw(self.histogram, 'Histogram')
@@ -256,14 +283,14 @@ class Application:
         """ Callback fron other modules to get the special dataset names (via data manager) """
         return self.data_manager.get_special_dataset_options(dataset)
 
-    def plot_default_datasets(self):
+    def plot_datasets(self):
 
         """ Plots the default set of data (from configuration file) """
 
         self.plotter.clear_data()
 
         # Get the default fields from config
-        default_fields = self.config['DEFAULT']['DefaultFields']
+        default_fields = self.global_config['DEFAULT']['DefaultFields']
         default_fields = [field.strip() for field in default_fields.split(",")]
 
         # Drawing mutiple plots, so turn off drawing until all three are processed
@@ -276,7 +303,19 @@ class Application:
                 display_name = self.data_manager.get_display_name(field)
                 self.action_subplot_change(field_count, display_name)
                 field_count += 1
-
+        
+        # If field count is less than 3, fill the rest of the plots in order from datasets
+        for field in numeric_fields:
+            if field_count == 3:
+                break # No more fields to add
+            
+            if field in default_fields:
+                continue # Already added, move onto next field
+            
+            display_name = self.data_manager.get_display_name(field)
+            self.action_subplot_change(field_count, display_name)
+            field_count += 1
+            
         # Now the plots can be drawn
         self.gui.set_dataset_choices(self.data_manager.get_numeric_display_names())
         self.plotter.suspend_draw(False)
@@ -293,13 +332,12 @@ def main():
     arg_parser = get_arg_parser()
     args = arg_parser.parse_args()
 
-    conf_parser = configparser.RawConfigParser()
-    conf_parser.read_file(codecs.open("config.ini", "r", "utf8"))
-
+    configmanager.load_global_config(".")
+    
     # The call to run() does not return.
     # All events are handled via GUI handlers and application callbacks.
 
-    _ = Application(args, conf_parser)
+    _ = Application(args)
 
     run_gui()
 

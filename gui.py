@@ -33,7 +33,7 @@ def get_module_logger():
 
 def ask_directory(title):
     """
-    Brings up Tk askdirectory window and if there are valid files, redraws plot
+    Brings up Tk askdirectory window and returns resulting path
     Args:
     title: The title for the askdirectory dialog
     """
@@ -164,6 +164,10 @@ class GUI:
             self.special_option_dropdown = special_option_dropdown
             self.special_option_button = special_option_button
 
+        def get_subplot_list(self):
+            """ Return a list of selected subplots """
+            return self.subplot_select_dropdowns.current_subplot_names
+            
         def get_dataset_name(self):
             """ Return the name of the currently selected dataset """
             return self.dataset_dropdown.var.get()
@@ -352,24 +356,32 @@ class GUI:
         self.main_window_frames.plot_select.pack()
         self.main_window_frames.data_controls.pack()
 
-    def reset_and_show_progress_bar(self, folder):
+    def reset_and_show_progress_bar(self, text):
         """
-        Creates a new progress bar to show loading files from a folder
+        Creates a new progress bar
         Args:
-        folder: Name of the folder
+        text: Text to show
         """
 
         self.add_new_window("Progress Bar", (5, 0.5), False, False)
 
         self.progress_bar = TkProgressBarHelper(
             self.tk_handles.windows["Progress Bar"],
-            {"text":"Loading from folder '%s'" % folder},
+            {"text":text},
             {},
             orient="horizontal", length="5i", mode="determinate"
             )
 
         self.progress_bar.pack()
 
+    def set_progress_text(self, text):
+        """
+        Sets the progress bar text
+        Args:
+        text: New text
+        """
+        self.progress_bar.set_label(text)
+        
     def set_progress_percent(self, percent):
         """
         Updates the progress bar with a new percentage
@@ -506,15 +518,20 @@ class GUI:
     def draw(self, plotter, figure_key='Main'):
         """ Draw the a plot on a figure
         Args:
-        plotter: The plotter object that will do the drwaing
+        plotter: The plotter object that will do the drawing
         figure_key: The key of the figure on which to plot
         """
-        plotter.draw(self.tk_handles.figures[figure_key])
+        current_subplots = self.dataset_controls.get_subplot_list()
+        styles = [
+            self.application.get_plotting_style_for_field(display_name) for display_name in current_subplots
+        ]
+        
+        plotter.draw(self.tk_handles.figures[figure_key], styles)
         self.tk_handles.canvases[figure_key].draw()
 
     def _exit(self):
         """
-        Exits the application by qutting the Tk loop
+        Exits the application by quitting the Tk loop
         """
         if messagebox.askyesno(app_info.TITLE, "Exit %s?" % app_info.TITLE):
             self.root.quit()
