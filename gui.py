@@ -19,6 +19,8 @@ from matplotlib.figure import Figure
 import tkinter as Tk
 from tkinter import messagebox, filedialog
 
+from app_reqs import REQS
+
 from tk_helpers import TkOptionMenuHelper, TkLabelledEntryHelper, TkProgressBarHelper
 import app_info
 
@@ -252,14 +254,14 @@ class GUI:
             self.data_controls = data_controls_frame
             self.data_controls_subframes = data_controls_subframes
 
-    def __init__(self, application):
+    def __init__(self, req_handler):
 
         """
         Args:
         application : application object used for querying things like dataset names
         """
 
-        self.application = application
+        self.application_request = req_handler
         self.root = Tk.Tk()
 
         # Note: keeping PhotoImage in self.icon stops it being garbage collected.
@@ -293,13 +295,12 @@ class GUI:
             data_controls_subframes=data_controls_subframes)
 
         # Subplot dataset pickers and label
-
         subplot_select_dropdowns = self.SubplotSelectDropdowns(
             self.main_window_frames.plot_select,
             [
-                self.application.action_subplot1_change,
-                self.application.action_subplot2_change,
-                self.application.action_subplot3_change
+                lambda sel: self.application_request(REQS.CHANGE_SUBPLOT1, sel),
+                lambda sel: self.application_request(REQS.CHANGE_SUBPLOT2, sel),
+                lambda sel: self.application_request(REQS.CHANGE_SUBPLOT3, sel),
             ],
             ["Upper Plot Data", "Middle Plot Data", "Lower Plot Data"],
             Tk.Label(self.main_window_frames.plot_select, text="Select plots:"))
@@ -320,16 +321,19 @@ class GUI:
                 ["Seconds", "Minutes", "Hours", "Days", "Weeks"], command=None, width=10),
             Tk.Button(
                 self.main_window_frames.data_controls_subframes[1],
-                text='Apply', command=self.application.action_average_data),
+                text='Apply',
+                command=lambda: self.application_request(REQS.AVERAGE_SUBPLOT_DATA)),
             Tk.Button(
                 self.main_window_frames.data_controls_subframes[1],
-                text='Reset', command=self.application.reset_average_data),
+                text='Reset',
+                command=lambda: self.application_request(REQS.RESET_SUBPLOT_DATA)),
             TkOptionMenuHelper(
                 self.main_window_frames.data_controls_subframes[2],
                 "Special Options", ["Special Options"], command=None),
             Tk.Button(
                 self.main_window_frames.data_controls_subframes[2],
-                text='Show', command=self.application.action_special_option)
+                text='Show',
+                command=lambda: self.application_request(REQS.SPECIAL_ACTION))
         )
 
         self.progress_bar = None
@@ -340,12 +344,16 @@ class GUI:
 
         self.new_data_button = Tk.Button(
             self.main_window_frames.application,
-            text='Open CSV Folder', command=self.application.action_new_data)
+            text='Open CSV Folder',
+            command=lambda: self.application_request(REQS.NEW_DATA))
+
         self.new_data_button.pack(padx=10, pady=10)
 
         self.about_button = Tk.Button(
             self.main_window_frames.application,
-            text='About CSV Viewer', command=self.application.action_about_dialog)
+            text='About CSV Viewer',
+            command=lambda: self.application_request(REQS.ABOUT_DIALOG))
+
         self.about_button.pack(padx=10, pady=10)
 
         self.exit_button = Tk.Button(self.main_window_frames.application, text='Exit', command=self._exit)
@@ -355,7 +363,7 @@ class GUI:
         self.main_window_frames.application.pack(side=Tk.RIGHT, padx=10, pady=10)
         self.main_window_frames.plot_select.pack()
         self.main_window_frames.data_controls.pack()
-
+    
     def reset_and_show_progress_bar(self, text):
         """
         Creates a new progress bar
@@ -486,7 +494,7 @@ class GUI:
         Args:
         selection: The name of the dataset selected
         """
-        special_options_list = self.application.get_special_dataset_options(selection)
+        special_options_list = self.application_request(REQS.GET_SPECIAL_ACTIONS, selection)
         self.dataset_controls.set_special_options(special_options_list, side=Tk.LEFT, padx=2)
 
     def _draw_full_ui(self):
@@ -523,7 +531,7 @@ class GUI:
         """
         current_subplots = self.dataset_controls.get_subplot_list()
         styles = [
-            self.application.get_plotting_style_for_field(display_name) for display_name in current_subplots
+            self.application_request(REQS.GET_PLOTTING_STYLE, display_name) for display_name in current_subplots
         ]
         
         plotter.draw(self.tk_handles.figures[figure_key], styles)

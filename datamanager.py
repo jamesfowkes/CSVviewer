@@ -143,7 +143,7 @@ class DataManager(threading.Thread):
         # Apply any special data conversions
         for key, dataframe in self.dataframes.items():
             try:
-                self.dataframes[key] = self.special_fields[key].convert(dataframe, limits)
+                self.dataframes[key] = self.special_fields[key].convert(dataframe)
                 get_module_logger().info("Applied special conversion to field '%s'", key)
             except KeyError:
                 get_module_logger().info("No special conversion exists for field '%s'", key)

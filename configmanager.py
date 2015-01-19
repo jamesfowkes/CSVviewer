@@ -97,7 +97,7 @@ def get_units():
             dataset_units = list(dict(dataset_config['UNITS']).items())
             units = dict(global_units + dataset_units)
     else:
-        units = global_units
+        units = dict(global_units)
 
     return units
 

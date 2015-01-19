@@ -16,6 +16,7 @@ import configmanager
 from datamanager import DataManager, EVT_DATA_LOAD_COMPLETE, EVT_DATA_PROCESSING_COMPLETE
 from gui import GUI, ask_directory, run_gui, show_info_dialog
 from plotter import Plotter, WindPlotter, Histogram
+from app_reqs import REQS
 
 import queue
 import threading
@@ -65,7 +66,7 @@ class Application:
         self.loading_timer = None
         self.data_manager = None
 
-        self.gui = GUI(self)
+        self.gui = GUI(self.request_handler)
 
     def action_about_dialog(self): # pylint: disable=no-self-use
         """
@@ -92,17 +93,27 @@ class Application:
 
         show_info_dialog(info)
 
-    def action_subplot1_change(self, dataset_choice):
-        """ Pass through to action_subplot_change """
-        self.action_subplot_change(0, dataset_choice)
-
-    def action_subplot2_change(self, dataset_choice):
-        """ Pass through to action_subplot_change """
-        self.action_subplot_change(1, dataset_choice)
-
-    def action_subplot3_change(self, dataset_choice):
-        """ Pass through to action_subplot_change """
-        self.action_subplot_change(2, dataset_choice)
+    def request_handler(self, request, *args):
+        if request == REQS.CHANGE_SUBPLOT1:
+            self.action_subplot_change(0, args[0])
+        elif request == REQS.CHANGE_SUBPLOT2:
+            self.action_subplot_change(1, args[1])
+        elif request == REQS.CHANGE_SUBPLOT3:
+            self.action_subplot_change(2, args[2])
+        elif request == REQS.AVERAGE_SUBPLOT_DATA:
+            self.action_average_data()
+        elif request == REQS.RESET_SUBPLOT_DATA:
+            self.action_reset_average_data()
+        elif request == REQS.SPECIAL_ACTION:
+            self.action_special_action()
+        elif request == REQS.NEW_DATA:
+            self.action_new_data()
+        elif request == REQS.ABOUT_DIALOG:
+            self.action_about_dialog()
+        elif request == REQS.GET_SPECIAL_ACTIONS:
+            return self.data_manager.get_special_dataset_options(args[0])
+        elif request == REQS.GET_PLOTTING_STYLE:
+            return self.get_plotting_style_for_field(args[0])
 
     def action_subplot_change(self, subplot_index, display_name):
 
@@ -180,7 +191,7 @@ class Application:
         
         return ["line","b"] if styles is None else styles
         
-    def reset_average_data(self):
+    def action_reset_average_data(self):
 
         """ Get the dataset of interest and reset the original data """
 
@@ -279,10 +290,6 @@ class Application:
 
             # Add window and axes to the GUI
             self.gui.draw(self.histogram, 'Histogram')
-
-    def get_special_dataset_options(self, dataset):
-        """ Callback fron other modules to get the special dataset names (via data manager) """
-        return self.data_manager.get_special_dataset_options(dataset)
 
     def plot_datasets(self):
 
