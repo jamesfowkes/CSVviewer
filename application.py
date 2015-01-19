@@ -97,9 +97,9 @@ class Application:
         if request == REQS.CHANGE_SUBPLOT1:
             self.action_subplot_change(0, args[0])
         elif request == REQS.CHANGE_SUBPLOT2:
-            self.action_subplot_change(1, args[1])
+            self.action_subplot_change(1, args[0])
         elif request == REQS.CHANGE_SUBPLOT3:
-            self.action_subplot_change(2, args[2])
+            self.action_subplot_change(2, args[0])
         elif request == REQS.AVERAGE_SUBPLOT_DATA:
             self.action_average_data()
         elif request == REQS.RESET_SUBPLOT_DATA:
@@ -177,15 +177,15 @@ class Application:
             try:
                 field_name = self.data_manager.get_field_name_from_display_name(display_name)
                 styles = configmanager.get_dataset_config('FORMATTING', field_name)
-                print("Styles 1: " + str(styles))
+
                 styles = [style.strip() for style in styles.split(",")]
-                print("Styles 2: " + str(styles))
+
                 if styles[0] == '':
                     styles[0] = 'line' #Add the default plot style
     
                 if len(styles) == 1:
                     styles.append('b') #Add the default colour (blue)
-                print("Styles 3: " + str(styles))
+
             except KeyError:
                 pass # This field name not in the config file
         
