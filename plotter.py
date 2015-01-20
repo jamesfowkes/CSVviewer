@@ -9,14 +9,12 @@ Defines a data plotter for the CSV viewer application using
 
 import logging
 
-import configmanager
-
 from windrose import WindroseAxes
 
 def get_module_logger():
     """ Returns logger for this module """
     return logging.getLogger(__name__)
-    
+
 #pylint: disable=too-few-public-methods
 class InvalidDataException(Exception):
     """ Just rename the base exception class """
@@ -35,11 +33,12 @@ class WindPlotter:
 
     """ Implements a windrose plot """
 
-    def __init__(self):
+    def __init__(self, configmanager):
         """ Initialise the wind plotter """
         self.windspeed = None
         self.direction = None
-        
+        self.configmanager = configmanager
+
     def set_data(self, speed, direction):
         """
         Args:
@@ -72,9 +71,9 @@ class WindPlotter:
 
             try:
                 #Try adding a unit to the legend title
-                units = configmanager.get_units() # Get unit strings from config
+                units = self.configmanager.get_units() # Get unit strings from config
                 legend_title = legend_title + " " + units["Wind Speed"].strip()
-                
+
             except (KeyError, ValueError):
                 pass # If no units exists, or the config isn't valid, just use title without units
 
@@ -90,7 +89,7 @@ class Histogram:
         self.data = None
         self.label = ""
 
-        
+
     def set_data(self, data, label):
         """
         Args:
@@ -99,7 +98,7 @@ class Histogram:
         """
         self.data = data
         self.label = label
-        
+
     def draw(self, fig):
 
         """ Draw histogram of current data on figure """
@@ -115,11 +114,12 @@ class Plotter:
 
     """ Implements standard plotting - three subplots of data vs. time """
 
-    def __init__(self):
+    def __init__(self, configmanager):
         """ Initialise the plotter """
         self.suspend = False
+        self.configmanager = configmanager
         self.clear_data()
-        
+
     def suspend_draw(self, suspend):
         """
         Args:
@@ -143,7 +143,7 @@ class Plotter:
         label - If this label exists in the config, returns the label with suffix applied
         """
         try:
-            units = configmanager.get_units() # Get unit strings from config
+            units = self.configmanager.get_units() # Get unit strings from config
             try:
                 label = label + " " + units[label].strip() #Try adding a unit to the field name
             except KeyError:
@@ -190,7 +190,7 @@ class Plotter:
         plot_count = 0
         for idx in range(3):
             if self.subplot_visible[idx]: #Only show visible plots
-                
+
                 get_module_logger().info("Plotting index %d with style options %s", idx, ",".join(styles[idx]))
                 #sharex parameter means axes will zoom as one w.r.t x-axis
                 axis = fig.add_subplot(self.visible_count, 1, plot_count+1, sharex=first_axis)
@@ -202,8 +202,8 @@ class Plotter:
                 elif styles[idx][0] == "bar":
                     axis.bar(
                         self.subplot_data[idx].times, self.subplot_data[idx].data,
-                        align="center", width=(10/86400), color=styles[idx][1], edgecolor = styles[idx][1])
-                    
+                        align="center", width=(10/86400), color=styles[idx][1], edgecolor=styles[idx][1])
+
                 axis.set_ylabel(self.subplot_data[idx].ylabel, fontsize=10)
 
                 #Save the first subplot so that other plots can share its x axis

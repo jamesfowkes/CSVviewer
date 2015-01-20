@@ -169,7 +169,7 @@ class GUI:
         def get_subplot_list(self):
             """ Return a list of selected subplots """
             return self.subplot_select_dropdowns.current_subplot_names
-            
+
         def get_dataset_name(self):
             """ Return the name of the currently selected dataset """
             return self.dataset_dropdown.var.get()
@@ -333,7 +333,7 @@ class GUI:
             Tk.Button(
                 self.main_window_frames.data_controls_subframes[2],
                 text='Show',
-                command=lambda: self.application_request(REQS.SPECIAL_ACTION))
+                command=lambda: self.application_request(REQS.SPECIAL_OPTION))
         )
 
         self.progress_bar = None
@@ -363,7 +363,7 @@ class GUI:
         self.main_window_frames.application.pack(side=Tk.RIGHT, padx=10, pady=10)
         self.main_window_frames.plot_select.pack()
         self.main_window_frames.data_controls.pack()
-    
+
     def reset_and_show_progress_bar(self, text):
         """
         Creates a new progress bar
@@ -389,7 +389,7 @@ class GUI:
         text: New text
         """
         self.progress_bar.set_label(text)
-        
+
     def set_progress_percent(self, percent):
         """
         Updates the progress bar with a new percentage
@@ -533,7 +533,7 @@ class GUI:
         styles = [
             self.application_request(REQS.GET_PLOTTING_STYLE, display_name) for display_name in current_subplots
         ]
-        
+
         plotter.draw(self.tk_handles.figures[figure_key], styles)
         self.tk_handles.canvases[figure_key].draw()
 

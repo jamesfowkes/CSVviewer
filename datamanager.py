@@ -14,8 +14,6 @@ import threading
 
 from datetime import timedelta
 
-import configmanager
-
 from special_fields import get_special_field
 
 # Data loading events
@@ -57,8 +55,13 @@ class DataManager(threading.Thread):
     The data manager runs in a separate thread to the rest of the application.
     This is so the application can get IO status updates during long operations
     such as CSV file read and parsing.
+
+    too-many-instance-attributes is disabled, as there's "only" 8.
+    This class could maybe be split up into smaller parts to make it simpler.
+
     """
-    def __init__(self, msg_queue, folder):
+    #pylint: disable=too-many-instance-attributes
+    def __init__(self, msg_queue, folder, configmanager):
         threading.Thread.__init__(self)
         self.queue = msg_queue
         self.folder = folder
@@ -80,7 +83,7 @@ class DataManager(threading.Thread):
                 self.special_fields[field_name] = get_special_field(field_type, field_name, display_name, other_args)
         except KeyError:
             pass # No special fields named in config file
-        
+
         # Some fields might want to be limited by the user
         self.limits = {}
         try:
@@ -94,7 +97,7 @@ class DataManager(threading.Thread):
                     pass # Could not convert limits: just leave as no limits
         except KeyError:
             pass # No limits specified in config file
-        
+
     def run(self):
         """
         Parse the file with pandas
@@ -120,7 +123,7 @@ class DataManager(threading.Thread):
             self.queue.put(percent_complete)
 
         self.queue.put(EVT_DATA_LOAD_COMPLETE)
-        
+
         # All dataframes created, now merge them and sort by time
         data = pd.concat(frames)
         data.sort_index(inplace=True)
@@ -141,16 +144,8 @@ class DataManager(threading.Thread):
         self.queue.put(60)
 
         # Apply any special data conversions
-        for key, dataframe in self.dataframes.items():
-            try:
-                self.dataframes[key] = self.special_fields[key].convert(dataframe)
-                get_module_logger().info("Applied special conversion to field '%s'", key)
-            except KeyError:
-                get_module_logger().info("No special conversion exists for field '%s'", key)
-                pass # No special field exists for this data
-            except:
-                raise
-                
+        self.convert_dataframes()
+
         self.queue.put(80)
 
         # The fields are fixed, so save them to a member now rather than compute each time
@@ -160,23 +155,37 @@ class DataManager(threading.Thread):
         self._set_numeric_fields()
 
         # Apply any user-specified limits
-        for key, limit in self.limits.items():
-            get_module_logger().info("Applying limits (%d, %d) to field %s",
-                limit[0], limit[1], key)
-                
-            field_name = self._display_to_field_dict[key]
-            
-            df = self.dataframes[key]
-            
-            max_limit = limit[1]
-            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] <= max_limit]
-            
-            min_limit = limit[0]
-            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] >= min_limit]
-                        
+        self.limit_dataframes()
+
         # Signal to main thread that data load and conversion is complete
         self.queue.put(100)
         self.queue.put(EVT_DATA_PROCESSING_COMPLETE)
+
+    def convert_dataframes(self):
+        """
+        Apply any data conversions in self.special_fields
+        """
+        for key, dataframe in self.dataframes.items():
+            try:
+                self.dataframes[key] = self.special_fields[key].convert(dataframe)
+                get_module_logger().info("Applied special conversion to field '%s'", key)
+            except KeyError:
+                get_module_logger().info("No special conversion exists for field '%s'", key)
+            except:
+                raise
+
+    def limit_dataframes(self):
+        """
+        Apply any limits in self.limits to the currently loaded dataframes
+        """
+        for key, limit in self.limits.items():
+            get_module_logger().info("Applying limits (%d, %d) to field %s", limit[0], limit[1], key)
+
+            max_limit = limit[1]
+            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] <= max_limit]
+
+            min_limit = limit[0]
+            self.dataframes[key] = self.dataframes[key][self.dataframes[key][key] >= min_limit]
 
     def _set_fieldnames(self, names):
         """

@@ -10,17 +10,24 @@ import pandas as pd
 import numpy as np
 import abc
 
-def get_special_field(type, field_name, display_name, args=None):
-    if type == "WS":
+def get_special_field(field_type, field_name, display_name, args=None):
+    """ Returns a specific type of special field object
+    Args:
+    field_type: String requesting type of field (string from config file)
+    field_name: The name of the field in the CSV files
+    display_name: The name that should be displayed in software
+    args: Any additional argument that should be passed to the constructor
+    """
+    if field_type == "WS":
         #args[0] should be the calibration factor for the windspeed
         return Windspeed(field_name, display_name, args[0] if args else None)
-    elif type == "HUM":
+    elif field_type == "HUM":
         return Humidity(field_name, display_name)
-    elif type == "WD":
+    elif field_type == "WD":
         return WindDirection(field_name, display_name)
-    elif type == "Flush Seconds":
+    elif field_type == "Flush Seconds":
         return FlushSeconds(field_name, display_name)
-        
+
 class SpecialField(object):
 
     """
@@ -45,8 +52,8 @@ class SpecialField(object):
         Converts data and timestamps as required
         To be overridden by subclasses
         """
-        return
-    
+        raise NotImplementedError()
+
     @abc.abstractmethod
     def capabilities(self, manager):
         """
@@ -56,8 +63,7 @@ class SpecialField(object):
         manager: Data manager (to query the existence of other datasets,
             for example windrose plot is only an option if both speed and direcion exist)
         """
-
-        return None
+        raise NotImplementedError()
 
 class Humidity(SpecialField):
 
@@ -106,7 +112,10 @@ class Windspeed(SpecialField):
         display_name : The name the field should have in plots/GUIs
         calibration_factor : The number to multiply each data point by to get m/s
         """
-        self.factor = float(calibration_factor) if calibration_factor is not None else 200 #Default calibration factor
+
+        #Set a default calibration factor if one wasn't provided
+        self.factor = float(calibration_factor) if calibration_factor is not None else 0.7
+
         SpecialField.__init__(self, field_name, display_name)
 
     def convert(self, dataframe):
@@ -128,15 +137,18 @@ class Windspeed(SpecialField):
         dataframe : The dataframe to convert
         """
 
-        # Convert timestamps to time deltas
+        # First, convert timestamps to time deltas
         # pylint's underlying astroid library cannot find numpy functions
         # So disable then re-enable warning.
+        # See:
         # http://stackoverflow.com/questions/20553551/how-do-i-get-pylint-to-recognize-numpy-members
         # This suggests that another astroid version can do this, so check in the future.
+
         #pylint: disable=no-member
         diffs = np.diff(dataframe.index)
         deltas_seconds = diffs/np.timedelta64(1, 's')
         #pylint: enable=no-member
+
         # Use deltas to calculate windspeed
         windspeed = list(dataframe[self.field_name].values)
 
@@ -166,7 +178,7 @@ class WindDirection(SpecialField):
     Wind direction data is assumed to come as cardinal points (N, E, S, W etc).
     Conversion is performed to degrees (0 to 359)
     """
-    def __init__(self,  field_name, display_name):
+    def __init__(self, field_name, display_name):
         """
         Args:
         field_name: The fieldname of the direction field
@@ -206,20 +218,20 @@ class WindDirection(SpecialField):
         _:Placeholder for data manager (not used)
         """
         return None
-        
+
 class FlushSeconds(SpecialField):
 
     """
     Flush duration data is only special because it can be histogram'd
     """
 
-    def __init__(self,  field_name, display_name):
+    def __init__(self, field_name, display_name):
         """
         Args:
         field_name: The fieldname of the flush seconds field
         """
-        SpecialField.__init__(self,  field_name, display_name)
-        
+        SpecialField.__init__(self, field_name, display_name)
+
     def convert(self, dataframe):
 
         """
@@ -229,8 +241,9 @@ class FlushSeconds(SpecialField):
         """
 
         return dataframe
-        
+
     def capabilities(self, manager):
-        
+
         """ Returns a list of the special functions that can be performed with this dataset """
         return ["Histogram"]
+

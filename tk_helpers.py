@@ -167,7 +167,7 @@ class TkProgressBarHelper(ttk.Progressbar):
     def set_label(self, new_text):
         """ Change the progress bar text """
         self.label.config(text=new_text)
-        
+
     def set(self, percent):
         """ Pass new percent through to var """
         self.var.set(percent)

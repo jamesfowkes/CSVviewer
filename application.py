@@ -8,10 +8,7 @@ Entry file for the CSV viewer application
 
 import argparse
 import logging
-import codecs
-import os
-
-import configmanager
+from configmanager import ConfigManager
 
 from datamanager import DataManager, EVT_DATA_LOAD_COMPLETE, EVT_DATA_PROCESSING_COMPLETE
 from gui import GUI, ask_directory, run_gui, show_info_dialog
@@ -39,6 +36,33 @@ def get_module_logger():
     """ Returns logger for this module """
     return logging.getLogger(__name__)
 
+def show_about_dialog():
+    """
+    Show information about this program
+    This could be implemented directly by the GUI, but
+    keeping it in the application maintains the GUI-asks-for-actions
+    model of this application.
+    Also, this should probably be made into a proper GUI window,
+    which the application should launch.
+    """
+    info = """
+    %s
+    Version %s
+
+    Created by:
+    Matt Little
+    James Fowkes
+
+    http://www.re-innovation.co.uk
+    Nottingham, UK
+
+    windrose code adapted from
+    http://sourceforge.net/projects/windrose/files/windrose/
+    by joshua_fr
+    """ % (TITLE, VERSION)
+
+    show_info_dialog(info)
+
 #pylint: disable=too-many-instance-attributes
 # Accept this warning, as application is not likely to grow
 # beyond current # of attributes on the short term. Refactoring
@@ -58,8 +82,10 @@ class Application:
         _ : Command line arguments (not currently used)
         """
 
-        self.plotter = Plotter()
-        self.windplotter = WindPlotter()
+        self.configmanager = ConfigManager(".")
+
+        self.plotter = Plotter(self.configmanager)
+        self.windplotter = WindPlotter(self.configmanager)
         self.histogram = Histogram()
 
         self.msg_queue = None
@@ -68,32 +94,17 @@ class Application:
 
         self.gui = GUI(self.request_handler)
 
-    def action_about_dialog(self): # pylint: disable=no-self-use
-        """
-        Show information about this program
-        pylint warning no-self-use is disabled. While this function
-        makes no use of self, it needs to be part of the application object
-        as it gets used by the GUI
-        """
-        info = """
-        %s
-        Version %s
-
-        Created by:
-        Matt Little
-        James Fowkes
-
-        http://www.re-innovation.co.uk
-        Nottingham, UK
-
-        windrose code adapted from
-        http://sourceforge.net/projects/windrose/files/windrose/
-        by joshua_fr
-        """ % (TITLE, VERSION)
-
-        show_info_dialog(info)
-
     def request_handler(self, request, *args):
+        """
+        This function is passed to the GUI.
+        When a button is pressed or information is required, the GUI uses this function
+        to access the application.
+
+        Args:
+        request: One of the request IDs defined in app_reqs.py. Determines the action that is taken.
+        args: List of additional argument that may be required on a per-request basis
+        """
+
         if request == REQS.CHANGE_SUBPLOT1:
             self.action_subplot_change(0, args[0])
         elif request == REQS.CHANGE_SUBPLOT2:
@@ -104,12 +115,12 @@ class Application:
             self.action_average_data()
         elif request == REQS.RESET_SUBPLOT_DATA:
             self.action_reset_average_data()
-        elif request == REQS.SPECIAL_ACTION:
-            self.action_special_action()
+        elif request == REQS.SPECIAL_OPTION:
+            self.action_special_option()
         elif request == REQS.NEW_DATA:
             self.action_new_data()
         elif request == REQS.ABOUT_DIALOG:
-            self.action_about_dialog()
+            show_about_dialog()
         elif request == REQS.GET_SPECIAL_ACTIONS:
             return self.data_manager.get_special_dataset_options(args[0])
         elif request == REQS.GET_PLOTTING_STYLE:
@@ -171,26 +182,31 @@ class Application:
         self.gui.draw(self.plotter)
 
     def get_plotting_style_for_field(self, display_name):
-        
+        """
+        Each field can have a style when plotted.
+        This function build that style based on dataset configuration.
+        If there is no config, the default plot style is a blue line.
+        """
+
         styles = None
-        if configmanager.has_dataset_config() and display_name is not None:
+        if self.configmanager.has_dataset_config() and display_name is not None:
             try:
                 field_name = self.data_manager.get_field_name_from_display_name(display_name)
-                styles = configmanager.get_dataset_config('FORMATTING', field_name)
+                styles = self.configmanager.get_dataset_config('FORMATTING', field_name)
 
                 styles = [style.strip() for style in styles.split(",")]
 
                 if styles[0] == '':
                     styles[0] = 'line' #Add the default plot style
-    
+
                 if len(styles) == 1:
                     styles.append('b') #Add the default colour (blue)
 
             except KeyError:
                 pass # This field name not in the config file
-        
-        return ["line","b"] if styles is None else styles
-        
+
+        return ["line", "b"] if styles is None else styles
+
     def action_reset_average_data(self):
 
         """ Get the dataset of interest and reset the original data """
@@ -205,7 +221,7 @@ class Application:
             display_name, subplot_index)
 
         self.gui.draw(self.plotter)
-        
+
     def action_new_data(self):
 
         """ Handles request to show open a new set of CSV files """
@@ -214,13 +230,13 @@ class Application:
 
         if new_directory != '' and DataManager.directory_has_data_files(new_directory):
             get_module_logger().info("Parsing directory %s", new_directory)
-            
-            configmanager.load_dataset_config(new_directory)
+
+            self.configmanager.load_dataset_config(new_directory)
 
             self.gui.reset_and_show_progress_bar("Loading from folder '%s'" % new_directory)
 
             self.msg_queue = queue.Queue()
-            self.data_manager = DataManager(self.msg_queue, new_directory)
+            self.data_manager = DataManager(self.msg_queue, new_directory, self.configmanager)
             self.data_manager.start()
 
             self.loading_timer = threading.Timer(0.1, self.check_data_manager_status)
@@ -298,7 +314,7 @@ class Application:
         self.plotter.clear_data()
 
         # Get the default fields from config
-        default_fields = configmanager.get_global_config('DEFAULT', 'DefaultFields')
+        default_fields = self.configmanager.get_global_config('DEFAULT', 'DefaultFields')
         default_fields = [field.strip() for field in default_fields.split(",")]
 
         # Drawing mutiple plots, so turn off drawing until all three are processed
@@ -311,19 +327,19 @@ class Application:
                 display_name = self.data_manager.get_display_name(field)
                 self.action_subplot_change(field_count, display_name)
                 field_count += 1
-        
+
         # If field count is less than 3, fill the rest of the plots in order from datasets
         for field in numeric_fields:
             if field_count == 3:
                 break # No more fields to add
-            
+
             if field in default_fields:
                 continue # Already added, move onto next field
-            
+
             display_name = self.data_manager.get_display_name(field)
             self.action_subplot_change(field_count, display_name)
             field_count += 1
-            
+
         # Now the plots can be drawn
         self.gui.set_dataset_choices(self.data_manager.get_numeric_display_names())
         self.plotter.suspend_draw(False)
@@ -340,8 +356,6 @@ def main():
     arg_parser = get_arg_parser()
     args = arg_parser.parse_args()
 
-    configmanager.load_global_config(".")
-    
     # The call to run() does not return.
     # All events are handled via GUI handlers and application callbacks.
 
